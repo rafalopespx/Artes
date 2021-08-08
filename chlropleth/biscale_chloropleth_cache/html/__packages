@@ -1,0 +1,10 @@
+base
+knitr
+rmdformats
+aopdata
+geobr
+biscale
+dplyr
+ggplot2
+cowplot
+sf

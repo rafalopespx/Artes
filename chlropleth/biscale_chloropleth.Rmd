@@ -1,0 +1,428 @@
+---
+title: "Visualizing territorial disparities"
+subtitle: "With Choropleth (`biscale` package) and Hexagon Maps (`aopdata` package)"
+date: "`r Sys.Date()`"
+author: "Rafael Lopes"
+output:
+  rmdformats::html_clean:
+    highlight: kate
+bibliography: bib/references.bib
+nocite: '@*'
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+library(rmdformats)
+
+## Global options
+options(max.print="75")
+opts_chunk$set(echo=TRUE,
+	             cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+opts_knit$set(width=75)
+```
+
+# Background {#back}
+
+The territorial disparities between socio-economic and/or geographical characteristics are well known, but hardly visualized. The aim of this document is to give a easily readable way to visualize this disparities with the already disposable data and programming tools. A better understand and easy visualization of the divergence over a territory will give more abstraction and can give mechanisms of how this disparities are produced or can be associated. 
+
+# Loading necessary package and data {#load}
+
+We start by loading the example data and packages that will be used through over this tutorial/document. The main packages used here will be the `geobr` [@geobr] and `aopdata` [@aopdata], both produce by the IPEA. 
+We use extra packages helping manupulating the data and plotting, such as `biscale`, `ggplot2`, `cowplot`, etc.
+
+```{r load}
+# Necessary packages
+library(aopdata) # aopdata,  package for the acessibility data for 20 major cities in Brazil
+library(geobr) # geobr, pacakage to download geophical data for Brazil
+library(biscale) # bivariate scale for chloropleth maps
+library(dplyr)
+library(ggplot2)
+library(cowplot)
+library(geobr)
+library(sf) # utilities packages
+```
+
+## Basic Plots {#basic-plot}
+
+Before proceeding to the more specific visualizing of disparities we do a bunch of basics plots, showing type of data within `geobr` and `aopdata`.
+
+{#fig:br-plot}
+```{r basic-plot}
+# Brazil Municipalities
+br_muni<-read_municipality(year = 2019, showProgress = FALSE)
+# Remove plot axis
+no_axis <- theme(axis.title=element_blank(),
+                 axis.text=element_blank(),
+                 axis.ticks=element_blank())
+# Plot for all municipalities in Brazil
+ggplot()+
+  geom_sf(data = br_muni, color="black", fill=NA, size=.15, show.legend = FALSE)+
+  scale_fill_viridis_b(option = "viridis", aesthetics = "fill")+
+  labs(subtitle="Brazilian Municipalities", size=8) +
+  theme_minimal() +
+  no_axis
+```
+
+We aim to study and understand better the disparities in the Sao Paulo Municipality, which is the major city of Brazil. We load a specific map with the districts for the city.
+
+{#fig:sp-plot}
+```{r sp_plot}
+# Loading Brazilian data on districts of all Municipalities
+br_districts<-read_neighborhood(year = 2010, showProgress = FALSE)
+# Filtering fo the Sao Paulo Municipality
+sp_districts<-br_districts[which(br_districts$code_muni == 3550308),]
+# Plotting
+ggplot()+
+  geom_sf(data = sp_districts, color="black", fill=NA, size=.15, show.legend = FALSE)+
+  scale_fill_viridis_b(option = "viridis", aesthetics = "fill")+
+  labs(subtitle="Sao Paulo Districts", size=8) +
+  theme_minimal() +
+  no_axis
+```
+
+Still in Sao Paulo we can load the data for access opportunities from the `aopdata` package. 
+`aopdata` package has two main types of data called by the two main functions, `read_population()` and `read_landuse()`.
+
+The first type is the population data on the municipality. The population data is loaded by the function `read_population()`, it come with the data on population for the municipality, e.g., number of residents, number of residents by race, average income per capita and quantiles and deciles for the income data, more on the nomenclature and calling on the function see [here](https://ipeagit.github.io/aopdata/reference/read_population.html).
+
+{#fig:population}
+```{r sp_aop_pop}
+# Aopdata on population
+sp_population<-read_population(city = "sao paulo", year = 2010, showProgress = FALSE, geometry = T)
+# Plotting
+## Average Income Per Capita
+ggplot()+
+  geom_sf(data = sp_districts, color="black", fill=NA, size=.15, show.legend = FALSE)+
+  geom_sf(data = subset(sp_population, R003 > 0),
+          aes(fill=R003), color=NA, alpha=.7) + # Average Income per capita
+  scale_fill_viridis_c(option = "viridis", aesthetics = "fill", name = "Decile of Income")+ 
+  labs(subtitle="Sao Paulo Districts With Average Income per Capita", size=8) +
+  theme_minimal() +
+  no_axis
+```
+
+The second type of data is the land usage data, it has the same sociodemographic data from the `read_population()` and the land use data, such as number of schools, number of formal jobs, number health facilities. More details see [here](https://ipeagit.github.io/aopdata/reference/read_landuse.html).
+
+{#fig:landuse}
+```{r sp_aop_land}
+# Aopdata Landuse
+sp_landuse<-read_landuse(city = "sao paulo", year = 2019, showProgress = FALSE, geometry = T)
+# Plotting
+## 
+ggplot()+
+  geom_sf(data = sp_districts, color="black", fill=NA, size=.15, show.legend = FALSE)+
+  geom_sf(data = subset(sp_landuse, S001 > 0),
+          aes(fill=S001), color=NA, alpha=.7) + # Average Income per capita
+  scale_fill_viridis_c(option = "inferno", aesthetics = "fill", name = "Number Health Facilities")+ 
+  labs(subtitle="Sao Paulo Districts With Total Health Facilities", size=8) +
+  theme_minimal() +
+  no_axis
+```
+
+Access opportunities time, is another type of data that come with the `aopdata`, it is wrapper in the function `read_access()`, a brief example below, more details [here](https://ipeagit.github.io/aopdata/reference/read_access.html).
+
+{#fig:access}
+```{r sp_aop_access}
+# Aopdata access
+sp_access<-read_access(city = "sao paulo", mode = "public_transport", geometry = T, showProgress = F, peak = T)
+# Plotting
+## 
+ggplot()+
+  geom_sf(data = sp_districts, color="black", fill=NA, size=.15, show.legend = FALSE)+
+  geom_sf(data=subset(sp_access, CMAST60 > 0), 
+          aes(fill=CMAST120), color=NA, alpha=.7) +
+  scale_fill_viridis_c(option = "cividis", labels=scales::percent) +
+  labs(title='Proportion of Health Facilities accessible', fill="Accessibility",
+       subtitle='by public transport in less than 60 min.') +
+  theme_minimal() +
+  no_axis
+```
+
+# Visualizing disparities {#disparities}
+
+With those data we can create a way, with the `biscale` package, to visualize two of the data all together. 
+
+This is made by the usage of choropleth, which helps to visualize data over a spatial aggregations. `biscale` can upgrade this by creating a choropleth visualization in bivariate terms, i.e., with two scale of colors. 
+
+In the site you can see references on how to use the main functions of the package [link](https://slu-opengis.github.io/biscale/index.html). 
+
+There are two tutorials that can make better understand on how and why bivariate choropleth are helpful with spatial data, [here](https://timogrossenbacher.ch/2019/04/bivariate-maps-with-ggplot2-and-sf/) and [here](https://www.joshuastevens.net/cartography/make-a-bivariate-choropleth-map/).
+
+## Basics on chropleth {#basic-choropleth}
+
+For the first visualizing data we use the downloaded data from the `aopdata`, a very straight-forward association is race and income, by neighbohood on the municipality. We do this by the following code, for the association between numebr of autodeclared white people and income decile:
+
+{#fig:white-income}
+```{r basic-choropleth}
+# Plot object
+bi_plot<-subset(sp_landuse, !is.na(P002) & !is.na(R003)) %>% # subsetting for the Race variable and Income decile
+  bi_class(x = P002, y = R003, style = "quantile", dim = 3) %>% 
+  ggplot()+
+  geom_sf(aes(fill = bi_class, 
+              color = bi_class), size = 0.1, show.legend = FALSE)+
+  geom_sf(data = sp_districts, color="#2D3E50", fill="NA", size=.15, show.legend = FALSE)+
+  bi_scale_fill(pal = "DkBlue", dim = 3)+
+  bi_scale_color(pal = "DkBlue", dim = 3)+
+  no_axis+
+  theme_map()+
+  labs(title = element_text("White Residents and Income Decile"), size = 2, caption = "Elaboration: @rafalpx")
+
+# Legend
+legend <- bi_legend(pal = "DkBlue",
+                    dim = 3,
+                    xlab = paste0("Higher White Population"),
+                    ylab = paste0("Higher Income Decile"),
+                    size = 4)
+# Final plot
+bi_df_final<-ggdraw() +
+  draw_plot(bi_plot, 0, 0, 1, 1) +
+  draw_plot(legend, 0.48, 0.25, .25, .25)
+bi_df_final
+```
+
+A very unexpected relation between Income and race, we can see that the more central areas has people with higher income, and those people are more white. We can exacerbate this disparities by take into account not the white population resident, but the black or the non-white population, as the peripheries are dominated by black people both of the cuts will have similar relation.
+
+### Black Resident Population and Average Income {#black-income}
+
+**Notice we change the income variable, from the R003, income deciles, to the R001, average income per capita.**
+
+{#fig:black-income}
+```{r black-biplot}
+# biplot black people
+black_bi_plot<-subset(sp_landuse, !is.na(P003) & !is.na(R001)) %>% # subsetting for the Race variable and Income decile
+  bi_class(x = P003, y = R001, style = "quantile", dim = 3) %>% 
+  ggplot()+
+  geom_sf(aes(fill = bi_class, 
+              color = bi_class), size = 0.1, show.legend = FALSE)+
+  geom_sf(data = sp_districts, color="#2D3E50", fill="NA", size=.15, show.legend = FALSE)+
+  bi_scale_fill(pal = "DkViolet", dim = 3)+
+  bi_scale_color(pal = "DkViolet", dim = 3)+
+  no_axis+
+  theme_map()+
+  labs(title = element_text("Black Residents and Average Income"), size = 2, caption = "Elaboration: @rafalpx")
+
+# Legend
+legend <- bi_legend(pal = "DkViolet",
+                    dim = 3,
+                    xlab = paste0("Higher Black Population"),
+                    ylab = paste0("Higher Average Income"),
+                    size = 4)
+# Final plot
+black_bi_df_final<-ggdraw() +
+  draw_plot(black_bi_plot, 0, 0, 1, 1) +
+  draw_plot(legend, 0.48, 0.25, .25, .25)
+black_bi_df_final
+```
+
+Now we can observe a very clear disparities on the territory, as mentioned, the black resident population is located more at the peripheries of the municipality. A similar visualization can be drawn summing up the non-white people, our guess is that the clustering effect on the territory will be greater, to do so we have the following: 
+
+{#fig:nonwhite-income}
+```{r non-white-biplot}
+# biplot black people
+sp_landuse<-sp_landuse %>% 
+  mutate(P006 = P001 - P002)
+
+nonwhite_bi_plot<- subset(sp_landuse, !is.na(P006) & !is.na(R001)) %>% # subsetting for the Race variable and Income decile
+  bi_class(x = P006, y = R001, style = "quantile", dim = 3) %>% 
+  ggplot()+
+  geom_sf(aes(fill = bi_class, 
+              color = bi_class), size = 0.1, show.legend = FALSE)+
+  geom_sf(data = sp_districts, color="#2D3E50", fill="NA", size=.15, show.legend = FALSE)+
+  bi_scale_fill(pal = "GrPink", dim = 3)+
+  bi_scale_color(pal = "GrPink", dim = 3)+
+  no_axis+
+  theme_map()+
+  labs(title = element_text("Non-White Residents and Average Income"), size = 2, caption = "Elaboration: @rafalpx")
+
+# Legend
+legend <- bi_legend(pal = "GrPink",
+                    dim = 3,
+                    xlab = paste0("Higher Non-White Population"),
+                    ylab = paste0("Higher Average Income"),
+                    size = 4)
+# Final plot
+nonwhite_bi_df_final<-ggdraw() +
+  draw_plot(nonwhite_bi_plot, 0, 0, 1, 1) +
+  draw_plot(legend, 0.48, 0.25, .25, .25)
+nonwhite_bi_df_final
+```
+## Territory Access and Race
+
+The function from `aopdata` package, `read_access()` can be called, it will give percent of each opportunities accessable unitl a time threshold, identified by the number in the name of the variable, for example, in the [section](#fig:access) we plotted the percentage of the health facilites accessible within 60 minutes by public transportation. How will look this in choropleth maps with a bivariate scale for the race stratum of population?
+
+### Black People Accessibility
+
+#### Access to Health
+
+First to Health facilities, from the variable **TMIST**, which give the travel time interval to the nearest health facility and the **P003**, the number of black residents.
+
+{#fig:black-access-hosp1}
+```{r black-access}
+black_access_bi_plot<- subset(sp_access, !is.na(P003) & !is.na(TMIST) & TMIST < Inf) %>% 
+  bi_class(x = P003, y = TMIST, style = "quantile", dim = 3) %>% 
+  ggplot()+
+  geom_sf(aes(fill = bi_class, 
+              color = bi_class), size = 0.1, show.legend = FALSE)+
+  geom_sf(data = sp_districts, color="#2D3E50", fill="NA", size=.15, show.legend = FALSE)+
+  bi_scale_fill(pal = "Brown", dim = 3)+
+  bi_scale_color(pal = "Brown", dim = 3)+
+  no_axis+
+  theme_map()+
+  labs(title = element_text("Black Residents and TMIST"), 
+       size = 2, 
+       caption = "Elaboration: @rafalpx; TMIST = Travel Time Interval to a Health Facility")
+
+# Legend
+legend <- bi_legend(pal = "Brown",
+                    dim = 3,
+                    xlab = paste0("Higher Black Population"),
+                    ylab = paste0("Higher Travel Time Interval"),
+                    size = 4)
+# Final plot
+black_access_bi_df_final<-ggdraw() +
+  draw_plot(black_access_bi_plot, 0, 0, 1, 1) +
+  draw_plot(legend, 0.48, 0.25, .25, .25)
+black_access_bi_df_final
+```
+We can draw another three similar plots, relating travel time to health facilities and population, but specifying by the complexity of the health facilities. The variable **TMISB** gives travel time intervals to health facilities with low complexity, as well **TMISM** to the medium complexity and **TMISA** to the high complexity ones.
+
+{#fig:black-access-hosp2}
+```{r black-access-stratum}
+black_access_low<- subset(sp_access, !is.na(P003) & !is.na(TMISB) & TMISB < Inf) %>% 
+  bi_class(x = P003, y = TMISB, style = "quantile", dim = 3) %>% 
+  ggplot()+
+  geom_sf(aes(fill = bi_class, 
+              color = bi_class), size = 0.1, show.legend = FALSE)+
+  geom_sf(data = sp_districts, color="#2D3E50", fill="NA", size=.15, show.legend = FALSE)+
+  bi_scale_fill(pal = "GrPink", dim = 3)+
+  bi_scale_color(pal = "GrPink", dim = 3)+
+  no_axis+
+  theme_map()
+
+black_access_medium<- subset(sp_access, !is.na(P003) & !is.na(TMISM) & TMISM < Inf) %>% 
+  bi_class(x = P003, y = TMISM, style = "quantile", dim = 3) %>% 
+  ggplot()+
+  geom_sf(aes(fill = bi_class, 
+              color = bi_class), size = 0.1, show.legend = FALSE)+
+  geom_sf(data = sp_districts, color="#2D3E50", fill="NA", size=.15, show.legend = FALSE)+
+  bi_scale_fill(pal = "GrPink", dim = 3)+
+  bi_scale_color(pal = "GrPink", dim = 3)+
+  no_axis+
+  theme_map()
+
+black_access_high<- subset(sp_access, !is.na(P003) & !is.na(TMISA) & TMISA < Inf) %>% 
+  bi_class(x = P003, y = TMISA, style = "quantile", dim = 3) %>% 
+  ggplot()+
+  geom_sf(aes(fill = bi_class, 
+              color = bi_class), size = 0.1, show.legend = FALSE)+
+  geom_sf(data = sp_districts, color="#2D3E50", fill="NA", size=.15, show.legend = FALSE)+
+  bi_scale_fill(pal = "GrPink", dim = 3)+
+  bi_scale_color(pal = "GrPink", dim = 3)+
+  no_axis+
+  theme_map()
+
+legend <- bi_legend(pal = "GrPink",
+                    dim = 3,
+                    xlab = paste0("Higher Black Population"),
+                    ylab = paste0("Higher Travel Time Interval"),
+                    size = 4)
+
+prow <- plot_grid(
+  black_access_low + theme(legend.position="none"),
+  black_access_medium + theme(legend.position="none"),
+  black_access_high + theme(legend.position="none"),
+  align = 'vh',
+  labels = c("TMISB", "TMISM", "TMISA"),
+  hjust = -1,
+  nrow = 1
+)
+plot_grid(prow, legend, rel_widths = c(3, .5))
+```
+
+The higher complexity health facilities has higher time travel to the black people, even more to the peripheral residents. 
+
+#### Access to Education
+
+Similar to the health access, we have education variables with time travel to public schools, again stratified in level of given education. The total variable is the **TMIET**, and its stratication are, **TMIEI** for early childhood schools, **TMIEF** schools of elementary education level and **TMIEM** time travel to high schools. 
+
+{#fig:black-access-edu1}
+```{r black-access-stratum-edu}
+black_access_low_edu<- subset(sp_access, !is.na(P003) & !is.na(TMIEI) & TMIEI < Inf) %>% 
+  bi_class(x = P003, y = TMIEI, style = "quantile", dim = 3) %>% 
+  ggplot()+
+  geom_sf(aes(fill = bi_class, 
+              color = bi_class), size = 0.1, show.legend = FALSE)+
+  geom_sf(data = sp_districts, color="#2D3E50", fill="NA", size=.15, show.legend = FALSE)+
+  bi_scale_fill(pal = "GrPink", dim = 3)+
+  bi_scale_color(pal = "GrPink", dim = 3)+
+  no_axis+
+  theme_map()
+
+black_access_medium_edu<- subset(sp_access, !is.na(P003) & !is.na(TMIEF) & TMIEF < Inf) %>% 
+  bi_class(x = P003, y = TMIEF, style = "quantile", dim = 3) %>% 
+  ggplot()+
+  geom_sf(aes(fill = bi_class, 
+              color = bi_class), size = 0.1, show.legend = FALSE)+
+  geom_sf(data = sp_districts, color="#2D3E50", fill="NA", size=.15, show.legend = FALSE)+
+  bi_scale_fill(pal = "GrPink", dim = 3)+
+  bi_scale_color(pal = "GrPink", dim = 3)+
+  no_axis+
+  theme_map()
+
+black_access_high_edu<- subset(sp_access, !is.na(P003) & !is.na(TMIEM) & TMIEM < Inf) %>% 
+  bi_class(x = P003, y = TMIEM, style = "quantile", dim = 3) %>% 
+  ggplot()+
+  geom_sf(aes(fill = bi_class, 
+              color = bi_class), size = 0.1, show.legend = FALSE)+
+  geom_sf(data = sp_districts, color="#2D3E50", fill="NA", size=.15, show.legend = FALSE)+
+  bi_scale_fill(pal = "GrPink", dim = 3)+
+  bi_scale_color(pal = "GrPink", dim = 3)+
+  no_axis+
+  theme_map()
+
+black_access_all_edu<- subset(sp_access, !is.na(P003) & !is.na(TMIET) & TMIET < Inf) %>% 
+  bi_class(x = P003, y = TMIET, style = "quantile", dim = 3) %>% 
+  ggplot()+
+  geom_sf(aes(fill = bi_class, 
+              color = bi_class), size = 0.1, show.legend = FALSE)+
+  geom_sf(data = sp_districts, color="#2D3E50", fill="NA", size=.15, show.legend = FALSE)+
+  bi_scale_fill(pal = "GrPink", dim = 3)+
+  bi_scale_color(pal = "GrPink", dim = 3)+
+  no_axis+
+  theme_map()
+
+legend <- bi_legend(pal = "GrPink",
+                    dim = 3,
+                    xlab = paste0("Higher Black Population"),
+                    ylab = paste0("Higher Travel Time Interval"),
+                    size = 4)
+
+prow <- plot_grid(
+  black_access_low_edu + theme(legend.position="none"),
+  black_access_medium_edu + theme(legend.position="none"),
+  black_access_high_edu + theme(legend.position="none"),
+  black_access_all_edu + theme(legend.position="none"),
+  align = 'vh',
+  labels = c("TMIEI", "TMIEF", "TMIEM", "TMIET"),
+  hjust = -1,
+  nrow = 2
+)
+plot_grid(prow, legend, rel_widths = c(3, .5))
+```
+
+
+# References
+
+<div id="refs"></div>
+
+# Session info {-}
+
+```{r}
+sessionInfo()
+```
